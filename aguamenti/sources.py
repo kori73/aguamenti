@@ -1,5 +1,9 @@
+from venv import create
 import numpy as np
 import pandas as pd
+
+
+from .categorical import create_all_hierarchy
 
 
 def dates(start, end):
@@ -26,20 +30,21 @@ class DataGenerator:
             self,
             start_date,
             end_date,
-            partition_rows
+            hierarchy,
         ):
         self.start_date = start_date
         self.end_date = end_date
-        self.partition_rows = partition_rows
+        self.hierarchy = hierarchy
+        self.hierarchy_df = create_all_hierarchy(hierarchy)
         self.dates = pd.date_range(self.start_date, self.end_date)
         self.unit_rows = len(self.dates)
-        self.repeat = self.partition_rows // self.unit_rows
+        self.repeat = len(self.hierarchy_df)
 
     def generate_dates(self):
         return self.dates.repeat(self.repeat)
 
     def generate_categorical(self):
-        return np.tile(categorical(self.unit_rows), self.repeat)
+        return create_all_hierarchy(self.hierarchy)
 
     def generate_timeseries(self):
         return np.concatenate(
@@ -47,7 +52,8 @@ class DataGenerator:
         )
 
     def generate(self):
+        categoricals = pd.concat([self.hierarchy_df] * self.unit_rows).reset_index(drop=True)
         df = pd.DataFrame({"date": self.generate_dates()})
-        df["x"] = self.generate_categorical()
         df["y"] = self.generate_timeseries()
+        df = pd.concat([df, categoricals], axis=1)
         return df
