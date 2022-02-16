@@ -1,7 +1,6 @@
-from venv import create
 import numpy as np
 import pandas as pd
-
+import dask.dataframe as dd
 
 from .categorical import create_all_hierarchy
 
@@ -42,26 +41,29 @@ class DataGenerator:
         self.repeat = len(self.hierarchy_df)
         self.partition_col = partition_col
 
-    def generate_dates(self):
-        return self.dates.repeat(self.repeat)
+    def generate_dates(self, repeat):
+        return self.dates.repeat(repeat)
 
     def generate_categorical(self):
         return create_all_hierarchy(self.hierarchy)
 
-    def generate_timeseries(self):
+    def generate_timeseries(self, repeat):
         return np.concatenate(
-            [fourier(size=self.unit_rows) for i in range(self.repeat)]
+            [fourier(size=self.unit_rows) for i in range(repeat)]
         )
 
-    def split_by_partition_col(self):
+    def get_distinct_partition_vals(self):
         df = self.hierarchy_df
-        partition_vals = df[self.partition_col].unique()
-        return (df[df[self.partition_col] == i] for i in partition_vals)
+        return sorted(df[self.partition_col].unique())
 
-    def generate(self, hierarchy_df):
+    def generate(self, partition=None):
+        if partition is None:
+            hierarchy_df = self.hierarchy_df
+        else:
+            hierarchy_df = self.hierarchy_df[self.hierarchy_df[self.partition_col] == partition]
         categoricals = pd.concat([hierarchy_df] * self.unit_rows).reset_index(drop=True)
-        df = pd.DataFrame({"date": self.generate_dates()})
-        df["y"] = self.generate_timeseries()
+        df = pd.DataFrame({"date": self.generate_dates(len(hierarchy_df))})
+        df["y"] = self.generate_timeseries(len(hierarchy_df))
         df = pd.concat([df, categoricals], axis=1)
         return df
 
@@ -70,9 +72,12 @@ class DataGenerator:
             return self.generate(self.hierarchy_df)
 
         if self.partition_col in self.hierarchy_df.columns:
-            hierarchy_gen = self.split_by_partition_col()
-            results = []
-            for df in hierarchy_gen:
-                self.repeat = len(df)
-                results.append(self.generate(df))
-            return results
+            dsk = {}
+
+            distinct_partitions = self.get_distinct_partition_vals()
+            divisions = list(distinct_partitions)
+            divisions = divisions + [divisions[-1]]
+            for partition_val in distinct_partitions:
+                dsk[("generate", partition_val)] = (self.generate, partition_val)
+            meta = self.generate(distinct_partitions[0])
+            return dd.DataFrame(dsk, "generate", meta, divisions)
