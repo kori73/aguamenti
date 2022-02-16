@@ -31,6 +31,7 @@ class DataGenerator:
             start_date,
             end_date,
             hierarchy,
+            partition_col=None
         ):
         self.start_date = start_date
         self.end_date = end_date
@@ -39,6 +40,7 @@ class DataGenerator:
         self.dates = pd.date_range(self.start_date, self.end_date)
         self.unit_rows = len(self.dates)
         self.repeat = len(self.hierarchy_df)
+        self.partition_col = partition_col
 
     def generate_dates(self):
         return self.dates.repeat(self.repeat)
@@ -51,9 +53,26 @@ class DataGenerator:
             [fourier(size=self.unit_rows) for i in range(self.repeat)]
         )
 
-    def generate(self):
-        categoricals = pd.concat([self.hierarchy_df] * self.unit_rows).reset_index(drop=True)
+    def split_by_partition_col(self):
+        df = self.hierarchy_df
+        partition_vals = df[self.partition_col].unique()
+        return (df[df[self.partition_col] == i] for i in partition_vals)
+
+    def generate(self, hierarchy_df):
+        categoricals = pd.concat([hierarchy_df] * self.unit_rows).reset_index(drop=True)
         df = pd.DataFrame({"date": self.generate_dates()})
         df["y"] = self.generate_timeseries()
         df = pd.concat([df, categoricals], axis=1)
         return df
+
+    def main(self):
+        if self.partition_col is None:
+            return self.generate(self.hierarchy_df)
+
+        if self.partition_col in self.hierarchy_df.columns:
+            hierarchy_gen = self.split_by_partition_col()
+            results = []
+            for df in hierarchy_gen:
+                self.repeat = len(df)
+                results.append(self.generate(df))
+            return results
