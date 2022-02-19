@@ -81,3 +81,22 @@ class DataGenerator:
                 dsk[("generate", partition_val)] = (self.generate, partition_val)
             meta = self.generate(distinct_partitions[0])
             return dd.DataFrame(dsk, "generate", meta, divisions)
+
+    def explain(self, return_description=False):
+        granular_cols = [
+            k for k, v in self.hierarchy.items() if not v.get("dependencies")
+        ]
+        unique_categorical = 1
+        for value in self.hierarchy.values():
+            unique_categorical *= value["unique_count"]
+        npartitions = self.hierarchy[self.partition_col]["unique_count"]
+        result = f"""
+            Description of the result:
+                Will be unique by {granular_cols + ['date']}.
+                Each unique {granular_cols} will have {len(self.dates)} dates.
+                Will be {unique_categorical * len(self.dates)} rows.
+                Will be partitioned by {self.partition_col}, resulting in {npartitions} partitions.
+        """
+        print(result)
+        if return_description:
+            return result
