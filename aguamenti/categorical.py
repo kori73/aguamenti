@@ -24,6 +24,7 @@ def create_all_hierarchy(hierarchy):
         for dep in dependencies:
             dep_vals = result[dep].unique()
             mapped_vals = np.random.choice(vals, size=len(dep_vals))
+            mapped_vals[:len(vals)] = vals
             mapping = pd.DataFrame({col: mapped_vals, dep: dep_vals})
             result = result.merge(mapping, on=dep)
     return result
